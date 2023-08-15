@@ -1,6 +1,6 @@
-[submodule "third_party/onnx"]
-	path = third_party/onnx
-	url = https://github.com/daquexian/onnx.git
 [submodule "third_party/protobuf"]
 	path = third_party/protobuf
 	url = https://github.com/protocolbuffers/protobuf.git
+[submodule "third_party/onnx"]
+	path = third_party/onnx
+	url = git@github.com:lovelynewlife/onnx.git
