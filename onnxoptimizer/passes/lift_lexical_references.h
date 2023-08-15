@@ -93,6 +93,7 @@ struct LiftLexicalReferences : public FullGraphBasedPass {
   }
 
   using ValueTable = std::unordered_map<std::string, Value*>;
+  using InitializerTable = std::unordered_set<std::string>;
 
   // Environment stack, please to store value table and
   // controlled inputs
@@ -122,12 +123,25 @@ struct LiftLexicalReferences : public FullGraphBasedPass {
       return nullptr;
     }
 
+    bool findInInitializers(const std::string& name){
+      auto it = init_table.find(name);
+      if (it != init_table.end()) {
+        return true;
+      }
+      return false;
+    }
+
     void setVar(const std::string& name, Value* value) {
       value_table[name] = value;
     }
 
+    void setInitializer(const std::string& name){
+      init_table.insert(name);
+    }
+
    private:
     ValueTable value_table;
+    InitializerTable init_table;
   };
 
   std::shared_ptr<Environment> environment_stack;
@@ -143,12 +157,19 @@ struct LiftLexicalReferences : public FullGraphBasedPass {
     return old_frame;
   }
 
+  void addInitilizerReferences(Graph* g) {
+    for(auto init : g->initializer_names()){
+      environment_stack->setInitializer(init);
+    }
+  }
+
   std::set<std::string> liftReferences(Graph* g) {
     std::set<std::string> unresolved_references;
     pushFrame();
     for (auto& inp : g->inputs()) {
       environment_stack->setVar(inp->uniqueName(), inp);
     }
+    addInitilizerReferences(g);
 
     for (auto* n : g->nodes()) {
       // Skip optional input/captured value node.
@@ -159,7 +180,8 @@ struct LiftLexicalReferences : public FullGraphBasedPass {
       for (auto* inp : n->inputs()) {
         // Empty string is 0-input variadic argument. Skip that one.
         if (!inp->uniqueName().empty() &&
-            !environment_stack->findInThisFrame(inp->uniqueName())) {
+            !(environment_stack->findInThisFrame(inp->uniqueName()) || 
+            environment_stack->findInInitializers(inp->uniqueName()))) {
           unresolved_references.insert(inp->uniqueName());
         }
       }
@@ -170,7 +192,8 @@ struct LiftLexicalReferences : public FullGraphBasedPass {
       // subgraph scope, then it must be added as an input to the subgraph
       auto add_subgraph_outputs = [&](Graph* body_graph) {
         for (auto* out : body_graph->outputs()) {
-          if (environment_stack->findInAnyFrame(out->uniqueName())) {
+          if (environment_stack->findInAnyFrame(out->uniqueName())||
+              environment_stack->findInInitializers(out->uniqueName())) {
             local_unresolved.insert(out->uniqueName());
           }
         }
@@ -193,7 +216,8 @@ struct LiftLexicalReferences : public FullGraphBasedPass {
 
       std::vector<std::string> control_inputs;
       for (auto& unresolved : local_unresolved) {
-        if (environment_stack->findInAnyFrame(unresolved)) {
+        if (environment_stack->findInAnyFrame(unresolved)||
+              environment_stack->findInInitializers(unresolved)) {
           control_inputs.push_back(unresolved);
         } else {
           unresolved_references.insert(unresolved);
