@@ -2,7 +2,7 @@ from typing import MutableMapping, Optional
 
 from onnx import ModelProto, helper, checker
 
-from joint.model_utils import add_prefix_model, merge_project_graphs
+from onnxoptimizer.joint.model_utils import add_prefix_model, merge_project_graphs
 
 
 def merge_project_models(
