@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     ONNX_NAMESPACE::ModelProto model;
     onnx::optimization::loadModel(&model, model_in_path, true);
     onnx::checker::check_model(model);
-    auto new_model = onnx::optimization::Optimize(
+    auto new_model = onnx::optimization::OptimizeFixed(
         model, onnx::optimization::GetFuseAndEliminationPass());
     onnx::checker::check_model(new_model);
     bool save_external_data = !model_data_path.empty();

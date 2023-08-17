@@ -25,10 +25,11 @@ std::shared_ptr<PassManagerAnalysis> GeneralPassManager::run(Graph& graph) {
 }
 
 std::shared_ptr<PassManagerAnalysis> FixedPointPassManager::run(Graph& graph) {
-  bool fixed_point_optimization_done;
+  bool is_graph_changed;
+  int max_iters = 100;
 
   do {
-    fixed_point_optimization_done = false;
+    is_graph_changed = false;
     for (const std::shared_ptr<Pass>& pass : this->passes) {
       std::shared_ptr<PostPassAnalysis> analysis = pass->runPass(graph);
       if (pass->getPassAnalysisType() == PassAnalysisType::Empty) {
@@ -40,10 +41,12 @@ std::shared_ptr<PassManagerAnalysis> FixedPointPassManager::run(Graph& graph) {
       while (count_analysis->fixedPointOptimizationNeeded()) {
         count_analysis = std::static_pointer_cast<CountBasedPassAnalysis>(
             pass->runPass(graph));
-        fixed_point_optimization_done = true;
+        is_graph_changed = is_graph_changed||count_analysis->graphChanged();
       }
+      is_graph_changed = is_graph_changed||count_analysis->graphChanged();
     }
-  } while (fixed_point_optimization_done);
+    max_iters--;
+  } while (is_graph_changed && max_iters > 0);
 
   return std::shared_ptr<PassManagerAnalysis>(new EmptyPassManagerAnalysis());
 }
