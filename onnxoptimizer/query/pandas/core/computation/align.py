@@ -25,7 +25,7 @@ from pandas.core.dtypes.generic import (
 
 from pandas.core.base import PandasObject
 import pandas.core.common as com
-from pandas.core.computation.common import result_type_many
+from onnxoptimizer.query.pandas.core.computation.common import result_type_many
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

@@ -12,19 +12,19 @@ from pandas.util._validators import validate_bool_kwarg
 
 from pandas.core.dtypes.common import is_extension_array_dtype
 
-from pandas.core.computation.engines import ENGINES
-from pandas.core.computation.expr import (
+from onnxoptimizer.query.pandas.core.computation.engines import ENGINES
+from onnxoptimizer.query.pandas.core.computation.expr import (
     PARSERS,
     Expr,
 )
-from pandas.core.computation.parsing import tokenize_string
-from pandas.core.computation.scope import ensure_scope
+from onnxoptimizer.query.pandas.core.computation.parsing import tokenize_string
+from onnxoptimizer.query.pandas.core.computation.scope import ensure_scope
 from pandas.core.generic import NDFrame
 
 from pandas.io.formats.printing import pprint_thing
 
 if TYPE_CHECKING:
-    from pandas.core.computation.ops import BinOp
+    from onnxoptimizer.query.pandas.core.computation.ops import BinOp
 
 
 def _check_engine(engine: str | None) -> str:
@@ -48,8 +48,8 @@ def _check_engine(engine: str | None) -> str:
     str
         Engine name.
     """
-    from pandas.core.computation.check import NUMEXPR_INSTALLED
-    from pandas.core.computation.expressions import USE_NUMEXPR
+    from onnxoptimizer.query.pandas.core.computation.check import NUMEXPR_INSTALLED
+    from onnxoptimizer.query.pandas.core.computation.expressions import USE_NUMEXPR
 
     if engine is None:
         engine = "numexpr" if USE_NUMEXPR else "python"
@@ -167,7 +167,7 @@ def _check_for_locals(expr: str, stack_level: int, parser: str):
                 raise SyntaxError(msg)
 
 
-def eval(
+def pandas_eval(
     expr: str | BinOp,  # we leave BinOp out of the docstr bc it isn't for users
     parser: str = "pandas",
     engine: str | None = None,

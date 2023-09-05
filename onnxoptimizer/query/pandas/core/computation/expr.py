@@ -21,7 +21,7 @@ import numpy as np
 from pandas.errors import UndefinedVariableError
 
 import pandas.core.common as com
-from pandas.core.computation.ops import (
+from onnxoptimizer.query.pandas.core.computation.ops import (
     ARITH_OPS_SYMS,
     BOOL_OPS_SYMS,
     CMP_OPS_SYMS,
@@ -38,11 +38,11 @@ from pandas.core.computation.ops import (
     UnaryOp,
     is_term,
 )
-from pandas.core.computation.parsing import (
+from onnxoptimizer.query.pandas.core.computation.parsing import (
     clean_backtick_quoted_toks,
     tokenize_string,
 )
-from pandas.core.computation.scope import Scope
+from onnxoptimizer.query.pandas.core.computation.scope import Scope
 
 from pandas.io.formats import printing
 

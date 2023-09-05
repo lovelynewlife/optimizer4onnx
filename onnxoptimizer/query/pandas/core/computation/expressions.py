@@ -18,7 +18,7 @@ from pandas._config import get_option
 from pandas.util._exceptions import find_stack_level
 
 from pandas.core import roperator
-from pandas.core.computation.check import NUMEXPR_INSTALLED
+from onnxoptimizer.query.pandas.core.computation.check import NUMEXPR_INSTALLED
 
 if NUMEXPR_INSTALLED:
     import numexpr as ne
