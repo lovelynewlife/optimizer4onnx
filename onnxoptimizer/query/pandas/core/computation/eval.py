@@ -168,15 +168,15 @@ def _check_for_locals(expr: str, stack_level: int, parser: str):
 
 
 def pandas_eval(
-    expr: str | BinOp,  # we leave BinOp out of the docstr bc it isn't for users
-    parser: str = "pandas",
-    engine: str | None = None,
-    local_dict=None,
-    global_dict=None,
-    resolvers=(),
-    level: int = 0,
-    target=None,
-    inplace: bool = False,
+        expr: str | BinOp,  # we leave BinOp out of the docstr bc it isn't for users
+        parser: str = "pandas",
+        engine: str | None = None,
+        local_dict=None,
+        global_dict=None,
+        resolvers=(),
+        level: int = 0,
+        target=None,
+        inplace: bool = False,
 ):
     """
     Evaluate a Python expression as a string using various backends.
@@ -280,21 +280,6 @@ def pandas_eval(
 
     See the :ref:`enhancing performance <enhancingperf.eval>` documentation for
     more details.
-
-    Examples
-    --------
-    >>> df = pd.DataFrame({"animal": ["dog", "pig"], "age": [10, 20]})
-    >>> df
-      animal  age
-    0    dog   10
-    1    pig   20
-
-    We can add a new column using ``pd.eval``:
-
-    >>> pd.eval("double_age = df.age * 2", target=df)
-      animal  age  double_age
-    0    dog   10          20
-    1    pig   20          40
     """
     inplace = validate_bool_kwarg(inplace, "inplace")
 
@@ -319,7 +304,10 @@ def pandas_eval(
     ret = None
     first_expr = True
     target_modified = False
-
+    #################
+    # Parse Phase
+    #################
+    expr_to_eval = []
     for expr in exprs:
         expr = _convert_expression(expr)
         _check_for_locals(expr, level, parser)
@@ -335,14 +323,33 @@ def pandas_eval(
 
         parsed_expr = Expr(expr, engine=engine, parser=parser, env=env)
 
+        expr_to_eval.append(parsed_expr)
+
+    #################
+    # Optimization Phase
+    #################
+    # TODO: optimization phase
+
+    #################
+    # Evaluation Phase
+    #################
+    for e2e in expr_to_eval:
+        # get our (possibly passed-in) scope
+        env = ensure_scope(
+            level + 1,
+            global_dict=global_dict,
+            local_dict=local_dict,
+            resolvers=resolvers,
+            target=target,
+        )
+
         if engine == "numexpr" and (
-            is_extension_array_dtype(parsed_expr.terms.return_type)
-            or getattr(parsed_expr.terms, "operand_types", None) is not None
-            and any(
+                is_extension_array_dtype(e2e.terms.return_type)
+                or getattr(e2e.terms, "operand_types", None) is not None
+                and any(
                 is_extension_array_dtype(elem)
-                for elem in parsed_expr.terms.operand_types
-            )
-        ):
+                for elem in e2e.terms.operand_types
+                )):
             warnings.warn(
                 "Engine has switched to 'python' because numexpr does not support "
                 "extension array dtypes. Please set your engine to python manually.",
@@ -353,10 +360,10 @@ def pandas_eval(
 
         # construct the engine and evaluate the parsed expression
         eng = ENGINES[engine]
-        eng_inst = eng(parsed_expr)
+        eng_inst = eng(e2e)
         ret = eng_inst.evaluate()
 
-        if parsed_expr.assigner is None:
+        if e2e.assigner is None:
             if multi_line:
                 raise ValueError(
                     "Multi-line expressions are only valid "
@@ -366,7 +373,7 @@ def pandas_eval(
                 raise ValueError("Cannot operate inplace if there is no assignment")
 
         # assign if needed
-        assigner = parsed_expr.assigner
+        assigner = e2e.assigner
         if env.target is not None and assigner is not None:
             target_modified = True
 
