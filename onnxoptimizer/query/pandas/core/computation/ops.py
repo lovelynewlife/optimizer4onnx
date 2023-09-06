@@ -451,9 +451,9 @@ class BinOp(Op):
             if self.op in eval_in_python:
                 res = self.func(left.value, right.value)
             else:
-                from onnxoptimizer.query.pandas.core.computation.eval import eval
+                from onnxoptimizer.query.pandas.core.computation.eval import pandas_eval
 
-                res = eval(self, local_dict=env, engine=engine, parser=parser)
+                res = pandas_eval(self, local_dict=env, engine=engine, parser=parser)
 
         name = env.add_tmp(res)
         return term_type(name, env=env)

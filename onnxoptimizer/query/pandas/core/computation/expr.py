@@ -571,7 +571,7 @@ class BaseExprVisitor(ast.NodeVisitor):
         return self.visit(node.value)
 
     def visit_Subscript(self, node, **kwargs) -> Term:
-        from pandas import eval as pd_eval
+        from onnxoptimizer.query.pandas.core.computation.eval import pandas_eval as pd_eval
 
         value = self.visit(node.value)
         slobj = self.visit(node.slice)

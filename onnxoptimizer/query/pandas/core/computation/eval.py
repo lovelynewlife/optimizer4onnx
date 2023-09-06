@@ -373,6 +373,7 @@ def pandas_eval(
                 raise ValueError("Cannot operate inplace if there is no assignment")
 
         # assign if needed
+        # put eval result into proper variable identifier
         assigner = e2e.assigner
         if env.target is not None and assigner is not None:
             target_modified = True
