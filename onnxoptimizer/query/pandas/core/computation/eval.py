@@ -12,6 +12,7 @@ from pandas.util._validators import validate_bool_kwarg
 
 from pandas.core.dtypes.common import is_extension_array_dtype
 
+from onnxoptimizer.query.onnx_eval.model_context import MultiModelContext
 from onnxoptimizer.query.pandas.core.computation.engines import ENGINES
 from onnxoptimizer.query.pandas.core.computation.expr import (
     PARSERS,
@@ -23,8 +24,7 @@ from pandas.core.generic import NDFrame
 
 from pandas.io.formats.printing import pprint_thing
 
-if TYPE_CHECKING:
-    from onnxoptimizer.query.pandas.core.computation.ops import BinOp
+from onnxoptimizer.query.pandas.core.computation.ops import BinOp, ONNXEvalNode
 
 
 def _check_engine(engine: str | None) -> str:
@@ -165,6 +165,28 @@ def _check_for_locals(expr: str, stack_level: int, parser: str):
         for toknum, tokval in tokenize_string(expr):
             if toknum == tokenize.OP and tokval == "@":
                 raise SyntaxError(msg)
+
+
+def _check_need_fallback(parsed_expr: Expr, engine: str):
+    ret_engine = engine
+
+    if ret_engine == "numexpr" and (
+            is_extension_array_dtype(parsed_expr.terms.return_type)
+            or getattr(parsed_expr.terms, "operand_types", None) is not None
+            and any(
+        is_extension_array_dtype(elem)
+        for elem in parsed_expr.terms.operand_types
+    )):
+        warnings.warn(
+            "Engine has switched to 'python' because numexpr does not support "
+            "extension array dtypes. Please set your engine to python manually.",
+            RuntimeWarning,
+            stacklevel=find_stack_level(),
+        )
+
+        ret_engine = "python"
+
+    return ret_engine
 
 
 def pandas_eval(
@@ -329,11 +351,78 @@ def pandas_eval(
     # Optimization Phase
     #################
     # TODO: optimization phase
+    expr_to_opt = []
+    expr_remain = []
+
+    for e2e in expr_to_eval:
+        if isinstance(e2e.terms, ONNXEvalNode):
+            expr_to_opt.append(e2e)
+        else:
+            expr_remain.append(e2e)
+
+    res = {}
+    if len(expr_to_opt) < 2:
+        expr_remain.extend(expr_to_opt)
+    else:
+        # do optimize eval
+        fused_expr = MultiModelContext(expr_to_opt)
+        res.update(fused_expr())
 
     #################
     # Evaluation Phase
     #################
-    for e2e in expr_to_eval:
+
+    for assigner, ret in res.items():
+        if env.target is not None and assigner is not None:
+            target_modified = True
+
+            # if returning a copy, copy only on the first assignment
+            if not inplace and first_expr:
+                try:
+                    target = env.target
+                    if isinstance(target, NDFrame):
+                        target = target.copy(deep=None)
+                    else:
+                        target = target.copy()
+                except AttributeError as err:
+                    raise ValueError("Cannot return a copy of the target") from err
+            else:
+                target = env.target
+
+            # TypeError is most commonly raised (e.g. int, list), but you
+            # get IndexError if you try to do this assignment on np.ndarray.
+            # we will ignore numpy warnings here; e.g. if trying
+            # to use a non-numeric indexer
+            try:
+                with warnings.catch_warnings(record=True):
+                    # TODO: Filter the warnings we actually care about here.
+                    if inplace and isinstance(target, NDFrame):
+                        target.loc[:, assigner] = ret
+                    else:
+                        target[  # pyright: ignore[reportGeneralTypeIssues]
+                            assigner
+                        ] = ret
+            except (TypeError, IndexError) as err:
+                raise ValueError("Cannot assign expression output to target") from err
+
+            if not resolvers:
+                resolvers = ({assigner: ret},)
+            else:
+                # existing resolver needs updated to handle
+                # case of mutating existing column in copy
+                for resolver in resolvers:
+                    if assigner in resolver:
+                        resolver[assigner] = ret
+                        break
+                else:
+                    resolvers += ({assigner: ret},)
+
+            ret = None
+            first_expr = False
+            env.target = target
+
+    # evaluate un-optimized exprs
+    for e2e in expr_remain:
         # get our (possibly passed-in) scope
         env = ensure_scope(
             level + 1,
@@ -343,25 +432,21 @@ def pandas_eval(
             target=target,
         )
 
-        if engine == "numexpr" and (
-                is_extension_array_dtype(e2e.terms.return_type)
-                or getattr(e2e.terms, "operand_types", None) is not None
-                and any(
-                is_extension_array_dtype(elem)
-                for elem in e2e.terms.operand_types
-                )):
-            warnings.warn(
-                "Engine has switched to 'python' because numexpr does not support "
-                "extension array dtypes. Please set your engine to python manually.",
-                RuntimeWarning,
-                stacklevel=find_stack_level(),
-            )
-            engine = "python"
+        engine = _check_need_fallback(e2e, engine)
 
         # construct the engine and evaluate the parsed expression
         eng = ENGINES[engine]
         eng_inst = eng(e2e)
-        ret = eng_inst.evaluate()
+
+        # Temporary engine numexpr fallback check
+        # TODO: move it ahead, avoid eval many times
+        try:
+            ret = eng_inst.evaluate()
+        except ValueError:
+            engine = 'python'
+            eng = ENGINES[engine]
+            eng_inst = eng(e2e)
+            ret = eng_inst.evaluate()
 
         if e2e.assigner is None:
             if multi_line:

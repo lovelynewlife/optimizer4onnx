@@ -619,3 +619,29 @@ class FuncNode:
 
     def __call__(self, *args) -> MathCall:
         return MathCall(self, args)
+
+
+class ONNXEvalNode:
+    def __init__(self, name, context, args, kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
+        self.name = name
+        self.func = context
+
+    def __call__(self, env):
+        return self.func(**self.kwargs)
+
+    def __repr__(self) -> str:
+        return pprint_thing(f"{self.name}({','.join(self.args)},{self.kwargs})")
+
+    @property
+    def return_type(self):
+        return np.array
+
+    @property
+    def model(self):
+        return self.func.model
+
+    @property
+    def inputs(self):
+        return self.kwargs

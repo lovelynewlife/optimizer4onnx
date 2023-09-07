@@ -304,7 +304,8 @@ packages = setuptools.find_packages()
 install_requires.extend([
     'onnx',
     'pandas==2.1.0',
-    'gorilla'
+    'gorilla',
+    "onnxruntime"
 ])
 
 ################################################################################

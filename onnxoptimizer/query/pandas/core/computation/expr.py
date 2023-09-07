@@ -21,6 +21,8 @@ import numpy as np
 from pandas.errors import UndefinedVariableError
 
 import pandas.core.common as com
+
+from onnxoptimizer.query.onnx_eval.model_context import ModelContext
 from onnxoptimizer.query.pandas.core.computation.ops import (
     ARITH_OPS_SYMS,
     BOOL_OPS_SYMS,
@@ -36,7 +38,7 @@ from onnxoptimizer.query.pandas.core.computation.ops import (
     Op,
     Term,
     UnaryOp,
-    is_term,
+    is_term, ONNXEvalNode,
 )
 from onnxoptimizer.query.pandas.core.computation.parsing import (
     clean_backtick_quoted_toks,
@@ -133,10 +135,10 @@ def _compose(*funcs):
 
 
 def _preparse(
-    source: str,
-    f=_compose(
-        _replace_locals, _replace_booleans, _rewrite_assign, clean_backtick_quoted_toks
-    ),
+        source: str,
+        f=_compose(
+            _replace_locals, _replace_booleans, _rewrite_assign, clean_backtick_quoted_toks
+        ),
 ) -> str:
     """
     Compose a collection of tokenization functions.
@@ -176,7 +178,6 @@ def _is_type(t):
 _is_list = _is_type(list)
 _is_str = _is_type(str)
 
-
 # partition all AST nodes
 _all_nodes = frozenset(
     node
@@ -208,10 +209,8 @@ _arguments_nodes = _filter_nodes(ast.arguments)
 _keyword_nodes = _filter_nodes(ast.keyword)
 _alias_nodes = _filter_nodes(ast.alias)
 
-
 # nodes that we don't support directly but are needed for parsing
 _hacked_nodes = frozenset(["Assign", "Module", "Expr"])
-
 
 _unsupported_expr_nodes = frozenset(
     [
@@ -231,15 +230,15 @@ _unsupported_expr_nodes = frozenset(
 
 # these nodes are low priority or won't ever be supported (e.g., AST)
 _unsupported_nodes = (
-    _stmt_nodes
-    | _mod_nodes
-    | _handler_nodes
-    | _arguments_nodes
-    | _keyword_nodes
-    | _alias_nodes
-    | _expr_context_nodes
-    | _unsupported_expr_nodes
-) - _hacked_nodes
+                             _stmt_nodes
+                             | _mod_nodes
+                             | _handler_nodes
+                             | _arguments_nodes
+                             | _keyword_nodes
+                             | _alias_nodes
+                             | _expr_context_nodes
+                             | _unsupported_expr_nodes
+                     ) - _hacked_nodes
 
 # we're adding a different assignment in some cases to be equality comparison
 # and we don't want `stmt` and friends in their so get only the class whose
@@ -352,6 +351,7 @@ class BaseExprVisitor(ast.NodeVisitor):
 
     const_type: ClassVar[type[Term]] = Constant
     term_type: ClassVar[type[Term]] = Term
+    onnx_node_type: ClassVar[type[ONNXEvalNode]] = ONNXEvalNode
 
     binary_ops = CMP_OPS_SYMS + BOOL_OPS_SYMS + ARITH_OPS_SYMS
     binary_op_nodes = (
@@ -458,19 +458,19 @@ class BaseExprVisitor(ast.NodeVisitor):
     def _maybe_downcast_constants(self, left, right):
         f32 = np.dtype(np.float32)
         if (
-            left.is_scalar
-            and hasattr(left, "value")
-            and not right.is_scalar
-            and right.return_type == f32
+                left.is_scalar
+                and hasattr(left, "value")
+                and not right.is_scalar
+                and right.return_type == f32
         ):
             # right is a float32 array, left is a scalar
             name = self.env.add_tmp(np.float32(left.value))
             left = self.term_type(name, self.env)
         if (
-            right.is_scalar
-            and hasattr(right, "value")
-            and not left.is_scalar
-            and left.return_type == f32
+                right.is_scalar
+                and hasattr(right, "value")
+                and not left.is_scalar
+                and left.return_type == f32
         ):
             # left is a float32 array, right is a scalar
             name = self.env.add_tmp(np.float32(right.value))
@@ -490,13 +490,13 @@ class BaseExprVisitor(ast.NodeVisitor):
         )
 
     def _maybe_evaluate_binop(
-        self,
-        op,
-        op_class,
-        lhs,
-        rhs,
-        eval_in_python=("in", "not in"),
-        maybe_eval_in_python=("==", "!=", "<", ">", "<=", ">="),
+            self,
+            op,
+            op_class,
+            lhs,
+            rhs,
+            eval_in_python=("in", "not in"),
+            maybe_eval_in_python=("==", "!=", "<", ">", "<=", ">="),
     ):
         res = op(lhs, rhs)
 
@@ -507,9 +507,9 @@ class BaseExprVisitor(ast.NodeVisitor):
             )
 
         if self.engine != "pytables" and (
-            res.op in CMP_OPS_SYMS
-            and getattr(lhs, "is_datetime", False)
-            or getattr(rhs, "is_datetime", False)
+                res.op in CMP_OPS_SYMS
+                and getattr(lhs, "is_datetime", False)
+                or getattr(rhs, "is_datetime", False)
         ):
             # all date ops must be done in python bc numexpr doesn't work
             # well with NaT
@@ -520,8 +520,8 @@ class BaseExprVisitor(ast.NodeVisitor):
             return self._maybe_eval(res, eval_in_python)
         elif self.engine != "pytables":
             if (
-                getattr(lhs, "return_type", None) == object
-                or getattr(rhs, "return_type", None) == object
+                    getattr(lhs, "return_type", None) == object
+                    or getattr(rhs, "return_type", None) == object
             ):
                 # evaluate "==" and "!=" in python if either of our operands
                 # has an object return type
@@ -689,6 +689,7 @@ class BaseExprVisitor(ast.NodeVisitor):
             return res(*new_args)
 
         else:
+            # evaluate recursively
             new_args = [self.visit(arg)(self.env) for arg in node.args]
 
             for key in node.keywords:
@@ -701,6 +702,9 @@ class BaseExprVisitor(ast.NodeVisitor):
 
                 if key.arg:
                     kwargs[key.arg] = self.visit(key.value)(self.env)
+
+            if isinstance(res, ModelContext):
+                return self.onnx_node_type(node.func.id, res, new_args, kwargs)
 
             name = self.env.add_tmp(res(*new_args, **kwargs))
             return self.term_type(name=name, env=self.env)
@@ -756,14 +760,14 @@ _numexpr_supported_calls = frozenset(REDUCTIONS + MATHOPS)
 )
 class PandasExprVisitor(BaseExprVisitor):
     def __init__(
-        self,
-        env,
-        engine,
-        parser,
-        preparser=partial(
-            _preparse,
-            f=_compose(_replace_locals, _replace_booleans, clean_backtick_quoted_toks),
-        ),
+            self,
+            env,
+            engine,
+            parser,
+            preparser=partial(
+                _preparse,
+                f=_compose(_replace_locals, _replace_booleans, clean_backtick_quoted_toks),
+            ),
     ) -> None:
         super().__init__(env, engine, parser, preparser)
 
@@ -771,7 +775,7 @@ class PandasExprVisitor(BaseExprVisitor):
 @disallow(_unsupported_nodes | _python_not_supported | frozenset(["Not"]))
 class PythonExprVisitor(BaseExprVisitor):
     def __init__(
-        self, env, engine, parser, preparser=lambda source, f=None: source
+            self, env, engine, parser, preparser=lambda source, f=None: source
     ) -> None:
         super().__init__(env, engine, parser, preparser=preparser)
 
@@ -794,12 +798,12 @@ class Expr:
     parser: str
 
     def __init__(
-        self,
-        expr,
-        engine: str = "numexpr",
-        parser: str = "pandas",
-        env: Scope | None = None,
-        level: int = 0,
+            self,
+            expr,
+            engine: str = "numexpr",
+            parser: str = "pandas",
+            env: Scope | None = None,
+            level: int = 0,
     ) -> None:
         self.expr = expr
         self.env = env or Scope(level=level + 1)
