@@ -99,6 +99,9 @@ def merge_project_models(
     model.functions.MergeFrom(m1.functions)
     model.functions.MergeFrom(m2.functions)
 
-    checker.check_model(model, full_check=True)
+    # walk around bug from sklearn-onnx converter
+    # zipmap will not pass the check
+    # see: https://github.com/onnx/sklearn-onnx/issues/858
+    checker.check_model(model, full_check=False)
 
     return model
