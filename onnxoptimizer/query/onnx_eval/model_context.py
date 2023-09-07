@@ -60,7 +60,7 @@ class MultiModelContext:
             model_prefix, model_model = models[i]
             model_fused = merge_project_models(model_fused, model_model, "", model_prefix)
 
-        self.model_data = onnxoptimizer.optimize(model_fused).SerializeToString()
+        self.model_data = onnxoptimizer.optimize(model_fused, fixed_point=True).SerializeToString()
 
     def __call__(self):
         session = ort.InferenceSession(self.model_data)
