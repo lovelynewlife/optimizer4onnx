@@ -14,6 +14,7 @@ from typing import (
 )
 
 import numpy as np
+from onnxconverter_common import Int64TensorType, FloatTensorType, StringTensorType
 
 from pandas._libs.tslibs import Timestamp
 
@@ -68,7 +69,6 @@ _binary_math_ops = ("arctan2",)
 
 MATHOPS = _unary_math_ops + _binary_math_ops
 
-
 LOCAL_TAG = "__pd_eval_local_"
 
 
@@ -108,7 +108,7 @@ class Term:
         local_name = str(self.local_name)
         is_local = self.is_local
         if local_name in self.env.scope and isinstance(
-            self.env.scope[local_name], type
+                self.env.scope[local_name], type
         ):
             is_local = False
 
@@ -501,14 +501,14 @@ class BinOp(Op):
         lhs_rt = lhs.return_type
         lhs_rt = getattr(lhs_rt, "type", lhs_rt)
         if (
-            (lhs.is_scalar or rhs.is_scalar)
-            and self.op in _bool_ops_dict
-            and (
+                (lhs.is_scalar or rhs.is_scalar)
+                and self.op in _bool_ops_dict
+                and (
                 not (
-                    issubclass(rhs_rt, (bool, np.bool_))
-                    and issubclass(lhs_rt, (bool, np.bool_))
+                        issubclass(rhs_rt, (bool, np.bool_))
+                        and issubclass(lhs_rt, (bool, np.bool_))
                 )
-            )
+        )
         ):
             raise NotImplementedError("cannot evaluate scalar only bool ops")
 
@@ -589,7 +589,7 @@ class UnaryOp(Op):
         if operand.return_type == np.dtype("bool"):
             return np.dtype("bool")
         if isinstance(operand, Op) and (
-            operand.op in _cmp_ops_dict or operand.op in _bool_ops_dict
+                operand.op in _cmp_ops_dict or operand.op in _bool_ops_dict
         ):
             return np.dtype("bool")
         return np.dtype("int")
@@ -621,12 +621,22 @@ class FuncNode:
         return MathCall(self, args)
 
 
+type_map = {
+    "int64": Int64TensorType([None, 1]),
+    "float64": FloatTensorType([None, 1]),
+    "object": StringTensorType([None, 1]),
+}
+
+
 class ONNXEvalNode:
     def __init__(self, name, context, args, kwargs) -> None:
         self.args = args
         self.kwargs = kwargs
         self.name = name
         self.func = context
+
+        init_types = [(elem, type_map[self.kwargs[elem].dtype.name]) for elem in self.kwargs.keys()]
+        self.func.load_model(init_types)
 
     def __call__(self, env):
         return self.func(**self.kwargs)

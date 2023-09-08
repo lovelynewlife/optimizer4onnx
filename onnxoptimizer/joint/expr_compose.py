@@ -35,10 +35,11 @@ def merge_project_models(
         if entry.domain in opset_import_map:
             found_version = opset_import_map[entry.domain]
             if entry.version != found_version:
-                raise ValueError(
-                    "Can't merge two models with different operator set ids for a given domain. "
-                    f"Got: {m1.opset_import} and {m2.opset_import}"
-                )
+                #               raise ValueError(
+                #                   "Can't merge two models with different operator set ids for a given domain. "
+                #                   f"Got: {m1.opset_import} and {m2.opset_import}"
+                #               )
+                opset_import_map[entry.domain] = max(int(entry.version), int(found_version))
         else:
             opset_import_map[entry.domain] = entry.version
 

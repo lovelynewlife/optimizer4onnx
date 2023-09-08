@@ -3,9 +3,11 @@ from typing import List
 import numpy as np
 import onnx
 import onnxruntime as ort
+import skl2onnx
 
 import onnxoptimizer
 from onnxoptimizer.joint import merge_project_models
+from sklearn.pipeline import Pipeline
 
 type_map = {
     "int64": np.int64,
@@ -15,12 +17,23 @@ type_map = {
 
 
 class ModelContext:
-    def __init__(self, path):
-        self.path = path
+    def __init__(self, pipeline: str | Pipeline):
+        self.pipeline = pipeline
 
-        self.model = onnx.load_model(self.path)
-        self.model = onnxoptimizer.optimize(self.model)
-        self.model_data = self.model.SerializeToString()
+        if type(pipeline) == str:
+            self.model = onnx.load_model(self.pipeline)
+            self.model = onnxoptimizer.optimize(self.model)
+            self.model_data = self.model.SerializeToString()
+        else:
+            self.model = None
+            self.model = None
+            self.model_data = None
+
+    def load_model(self, init_types):
+        if self.model is None:
+            self.model = skl2onnx.to_onnx(self.pipeline, initial_types=init_types)
+            self.model = onnxoptimizer.optimize(self.model)
+            self.model_data = self.model.SerializeToString()
 
     def __call__(self, **kwargs):
         session = ort.InferenceSession(self.model_data)
@@ -68,13 +81,14 @@ class MultiModelContext:
             elem: self.all_inputs[elem].to_numpy().astype(type_map[self.all_inputs[elem].dtype.name]).reshape((-1, 1))
             for elem in self.all_inputs.keys()
         }
-        labels = [elem.name for elem in session.get_outputs() if elem.name.endswith("output_label")]
+        labels = [elem.name for elem in session.get_outputs()
+                  if elem.name.endswith("output_label") or elem.name.endswith("variable")]
         probabilities = [elem.name for elem in session.get_outputs() if elem.name.endswith("output_probability")]
         infer_res = session.run(labels, infer_batch)
 
         label_out = []
         for elem in labels:
-            label_out.append(elem.replace("output_label", ""))
+            label_out.append(elem.replace("output_label", "").replace("variable", ""))
 
         res = {}
         for i in range(len(labels)):

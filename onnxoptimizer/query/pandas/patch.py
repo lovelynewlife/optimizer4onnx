@@ -13,7 +13,7 @@ LEVEL_OFFSET_1 = 1
 @callable_patch(pandas)
 def predict_eval(expr: str,
                  parser: str = "pandas",
-                 engine: str | None = None,
+                 engine: str | None = 'python',
                  local_dict: Any = None,
                  global_dict: Any = None,
                  resolvers: Any = (),

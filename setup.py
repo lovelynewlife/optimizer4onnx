@@ -305,7 +305,9 @@ install_requires.extend([
     'onnx',
     'pandas==2.1.0',
     'gorilla',
-    "onnxruntime"
+    "onnxruntime",
+    "scikit-learn",
+    "skl2onnx"
 ])
 
 ################################################################################
