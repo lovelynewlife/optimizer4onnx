@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Callable
 
 import numpy as np
 import onnx
@@ -94,3 +94,16 @@ class MultiModelContext:
         for i in range(len(labels)):
             res[label_out[i]] = infer_res[i]
         return res
+
+
+def model_func(path: str):
+    def model_eval(func: Callable[[...], dict]):
+        mc = ModelContext(path)
+
+        def wrapper(*args, **kwargs):
+            input_map = func(*args, **kwargs)
+            return mc(**input_map)
+
+        return wrapper
+
+    return model_eval

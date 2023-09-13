@@ -1,11 +1,12 @@
 import unittest
+from typing import Callable
 
 import numpy as np
 
 import onnxoptimizer.query.pandas
 import pandas as pd
 
-from onnxoptimizer.query.onnx_eval.model_context import ModelContext
+from onnxoptimizer.query.onnx_eval.model_context import ModelContext, model_func
 
 
 class TestEval(unittest.TestCase):
@@ -81,6 +82,37 @@ class TestEval(unittest.TestCase):
         new_df = batch.predict_eval(eval_str, engine='python')
 
         print(new_df)
+
+    def test_model_func_wrapper(self):
+        def model_func_test(path: str):
+            def model_eval(func: Callable[[...], dict]):
+                def mc(**kwargs):
+                    print(path)
+                    ret_str = ""
+                    for k, v in kwargs.items():
+                        ret_str += f"{k}:{v}"
+
+                    return ret_str
+
+                def wrapper(*args, **kwargs):
+                    input_map = func(*args, **kwargs)
+                    return mc(**input_map)
+
+                return wrapper
+
+            return model_eval
+
+        @model_func_test("/here/for/test")
+        def a_model_function(a, b, c):
+            return {
+                "a": a,
+                "b": b,
+                "c": c
+            }
+
+        res = a_model_function(1, 2, 3)
+
+        assert res == f"a:1b:2c:3"
 
 
 if __name__ == "__main__":
