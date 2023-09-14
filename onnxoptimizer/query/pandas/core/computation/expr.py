@@ -22,7 +22,8 @@ from pandas.errors import UndefinedVariableError
 
 import pandas.core.common as com
 
-from onnxoptimizer.query.onnx_eval.model_context import ModelContext
+from onnxoptimizer.query.onnx.context import ModelContext
+from onnxoptimizer.query.pandas.api.function import ModelContextAnnotation
 from onnxoptimizer.query.pandas.core.computation.ops import (
     ARITH_OPS_SYMS,
     BOOL_OPS_SYMS,
@@ -703,8 +704,8 @@ class BaseExprVisitor(ast.NodeVisitor):
                 if key.arg:
                     kwargs[key.arg] = self.visit(key.value)(self.env)
 
-            if isinstance(res, ModelContext):
-                return self.onnx_node_type(node.func.id, res, new_args, kwargs)
+            if isinstance(res, ModelContextAnnotation):
+                return self.onnx_node_type(str(node), res, *new_args, **kwargs)
 
             name = self.env.add_tmp(res(*new_args, **kwargs))
             return self.term_type(name=name, env=self.env)

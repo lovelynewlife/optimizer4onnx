@@ -1,48 +1,38 @@
-from typing import List, Callable
-
-import numpy as np
-import onnx
 import onnxruntime as ort
-import skl2onnx
 
 import onnxoptimizer
 from onnxoptimizer.joint import merge_project_models
-from sklearn.pipeline import Pipeline
-
-type_map = {
-    "int64": np.int64,
-    "float64": np.float32,
-    "object": str,
-}
+from onnxoptimizer.query.onnx.model import ModelObject
+from onnxoptimizer.query.types.mapper import numpy_type_map
 
 
 class ModelContext:
-    def __init__(self, pipeline: str | Pipeline):
-        self.pipeline = pipeline
+    def __init__(self, model_obj: ModelObject):
+        self.model_obj = model_obj
 
-        if type(pipeline) == str:
-            self.model = onnx.load_model(self.pipeline)
-            self.model = onnxoptimizer.optimize(self.model)
-            self.model_data = self.model.SerializeToString()
-        else:
-            self.model = None
-            self.model = None
-            self.model_data = None
+        model_data = self.model_obj.model.SerializeToString()
+        self.infer_session = ort.InferenceSession(model_data)
+        self.infer_input = {}
 
-    def load_model(self, init_types):
-        if self.model is None:
-            self.model = skl2onnx.to_onnx(self.pipeline, initial_types=init_types)
-            self.model = onnxoptimizer.optimize(self.model)
-            self.model_data = self.model.SerializeToString()
+    def set_infer_input(self, **kwargs):
+        self.infer_input = kwargs
 
-    def __call__(self, **kwargs):
-        session = ort.InferenceSession(self.model_data)
+    @property
+    def model(self):
+        return self.model_obj.model
+
+    def __call__(self):
+        model_input = self.infer_input
         infer_batch = {
-            elem: kwargs[elem].to_numpy().astype(type_map[kwargs[elem].dtype.name]).reshape((-1, 1))
-            for elem in kwargs.keys()
+            k: v.to_numpy().astype(numpy_type_map[v.dtype.type]).reshape((-1, 1))
+            for k, v in model_input.items()
         }
-        labels = [elem.name for elem in session.get_outputs() if elem.name.endswith("output_label")]
+        session = self.infer_session
+
+        labels = [elem.name for elem in session.get_outputs()
+                  if elem.name.endswith("output_label") or elem.name.endswith("variable")]
         probabilities = [elem.name for elem in session.get_outputs() if elem.name.endswith("output_probability")]
+
         infer_res = session.run(labels, infer_batch)
         res = {}
         for i in range(len(labels)):
@@ -51,12 +41,12 @@ class ModelContext:
 
 
 class MultiModelContext:
-    def __init__(self, exprs):
+    def __init__(self, expr_list):
 
         self.compose_plan = {}
         models = []
         self.all_inputs = {}
-        for expr in exprs:
+        for expr in expr_list:
             kwargs = expr.terms.inputs
             model = expr.terms.model
             self.compose_plan[expr.assigner] = (kwargs, model)
@@ -78,7 +68,8 @@ class MultiModelContext:
     def __call__(self):
         session = ort.InferenceSession(self.model_data)
         infer_batch = {
-            elem: self.all_inputs[elem].to_numpy().astype(type_map[self.all_inputs[elem].dtype.name]).reshape((-1, 1))
+            elem: self.all_inputs[elem].to_numpy().astype(numpy_type_map[self.all_inputs[elem].dtype.type]).reshape(
+                (-1, 1))
             for elem in self.all_inputs.keys()
         }
         labels = [elem.name for elem in session.get_outputs()
@@ -94,16 +85,3 @@ class MultiModelContext:
         for i in range(len(labels)):
             res[label_out[i]] = infer_res[i]
         return res
-
-
-def model_func(path: str):
-    def model_eval(func: Callable[[...], dict]):
-        mc = ModelContext(path)
-
-        def wrapper(*args, **kwargs):
-            input_map = func(*args, **kwargs)
-            return mc(**input_map)
-
-        return wrapper
-
-    return model_eval

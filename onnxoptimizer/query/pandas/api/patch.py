@@ -5,7 +5,7 @@ from pandas import DataFrame
 from pandas.util._validators import validate_bool_kwarg
 
 from onnxoptimizer.query.pandas.core.computation.eval import pandas_eval
-from onnxoptimizer.query.patching import callable_patch
+from onnxoptimizer.query.util import callable_patch
 
 LEVEL_OFFSET_1 = 1
 
@@ -19,12 +19,12 @@ def predict_eval(expr: str,
                  resolvers: Any = (),
                  level: int = 0,
                  target: Any = None,
-                 inplace: bool = False):
-    print("This is my expr eval patching into pandas.")
+                 inplace: bool = False,
+                 enable_opt: bool = True):
     return pandas_eval(expr, parser=parser, engine=engine,
                        local_dict=local_dict, global_dict=global_dict,
                        resolvers=resolvers, level=level+LEVEL_OFFSET_1,
-                       target=target, inplace=inplace)
+                       target=target, inplace=inplace, enable_opt=enable_opt)
 
 
 @callable_patch(DataFrame, name="predict_eval")

@@ -24,6 +24,9 @@ from pandas.core.dtypes.common import (
 )
 
 import pandas.core.common as com
+
+from onnxoptimizer.query.onnx.context import ModelContext
+from onnxoptimizer.query.pandas.api.function import ModelContextAnnotation
 from onnxoptimizer.query.pandas.core.computation.common import (
     ensure_decoded,
     result_type_many,
@@ -34,6 +37,8 @@ from pandas.io.formats.printing import (
     pprint_thing,
     pprint_thing_encoded,
 )
+
+from onnxoptimizer.query.types.mapper import numpy_onnx_type_map
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -621,28 +626,19 @@ class FuncNode:
         return MathCall(self, args)
 
 
-type_map = {
-    "int64": Int64TensorType([None, 1]),
-    "float64": FloatTensorType([None, 1]),
-    "object": StringTensorType([None, 1]),
-}
-
-
 class ONNXEvalNode:
-    def __init__(self, name, context, args, kwargs) -> None:
-        self.args = args
-        self.kwargs = kwargs
+    def __init__(self, name, model_udf, *args, **kwargs) -> None:
         self.name = name
-        self.func = context
-
-        init_types = [(elem, type_map[self.kwargs[elem].dtype.name]) for elem in self.kwargs.keys()]
-        self.func.load_model(init_types)
+        self.func = model_udf
+        self.inputs = model_udf.get_inputs(*args, **kwargs)
+        self.model_context = ModelContext(model_udf.model_obj)
 
     def __call__(self, env):
-        return self.func(**self.kwargs)
+        self.model_context.set_infer_input(**self.inputs)
+        return self.model_context()
 
     def __repr__(self) -> str:
-        return pprint_thing(f"{self.name}({','.join(self.args)},{self.kwargs})")
+        return "ONNXEvalNode"
 
     @property
     def return_type(self):
@@ -651,7 +647,3 @@ class ONNXEvalNode:
     @property
     def model(self):
         return self.func.model
-
-    @property
-    def inputs(self):
-        return self.kwargs
