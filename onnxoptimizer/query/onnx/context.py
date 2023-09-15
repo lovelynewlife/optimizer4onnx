@@ -29,15 +29,20 @@ class ModelContext:
         }
         session = self.infer_session
 
-        labels = [elem.name for elem in session.get_outputs()
-                  if elem.name.endswith("output_label") or elem.name.endswith("variable")]
+        labels = [elem.name for elem in session.get_outputs()]
         probabilities = [elem.name for elem in session.get_outputs() if elem.name.endswith("output_probability")]
 
+        label_out = []
+        for elem in labels:
+            label_out.append(elem.replace("output_label", "").replace("variable", ""))
+
         infer_res = session.run(labels, infer_batch)
-        res = {}
+        infer_result = {}
+
         for i in range(len(labels)):
-            res[labels[i]] = infer_res[i]
-        return res[labels[0]]
+            infer_result[labels[i]] = infer_res[i]
+
+        return infer_result[label_out[0]]
 
 
 class MultiModelContext:

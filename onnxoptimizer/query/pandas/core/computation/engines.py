@@ -137,7 +137,22 @@ class PythonEngine(AbstractEngine):
         pass
 
 
+class ONNXEngine(AbstractEngine):
+    """
+    Evaluate an expression in ONNX context
+    """
+
+    has_neg_frac = True
+
+    def evaluate(self):
+        return self.expr()
+
+    def _evaluate(self) -> None:
+        pass
+
+
 ENGINES: dict[str, type[AbstractEngine]] = {
     "numexpr": NumExprEngine,
     "python": PythonEngine,
+    "onnxruntime": ONNXEngine
 }

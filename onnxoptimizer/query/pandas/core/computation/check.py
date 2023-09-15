@@ -9,4 +9,11 @@ if NUMEXPR_INSTALLED:
 else:
     NUMEXPR_VERSION = None
 
+ort = import_optional_dependency("onnxruntime", errors="warn")
+ONNXRUNTIME_INSTALLED = ort is not None
+if ONNXRUNTIME_INSTALLED:
+    ONNXRUNTIME_VERSION = ort.__version__
+else:
+    ONNXRUNTIME_VERSION = None
+
 __all__ = ["NUMEXPR_INSTALLED", "NUMEXPR_VERSION"]

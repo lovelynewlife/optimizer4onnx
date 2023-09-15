@@ -13,11 +13,12 @@ from pandas.util._validators import validate_bool_kwarg
 from pandas.core.dtypes.common import is_extension_array_dtype
 
 from onnxoptimizer.query.onnx.context import MultiModelContext
+from onnxoptimizer.query.pandas.core.computation.check import ONNXRUNTIME_INSTALLED
 from onnxoptimizer.query.pandas.core.computation.engines import ENGINES
-from onnxoptimizer.query.pandas.core.computation.expr import (
+from onnxoptimizer.query.pandas.core.computation.visitor import (
     PARSERS,
-    Expr,
 )
+from onnxoptimizer.query.pandas.core.computation.expr import Expr, _assign_value, ComposedExpr
 from onnxoptimizer.query.pandas.core.computation.parsing import tokenize_string
 from onnxoptimizer.query.pandas.core.computation.scope import ensure_scope
 from pandas.core.generic import NDFrame
@@ -65,8 +66,14 @@ def _check_engine(engine: str | None) -> str:
     # Could potentially be done on engine instantiation
     if engine == "numexpr" and not NUMEXPR_INSTALLED:
         raise ImportError(
-            "'numexpr' is not installed or an unsupported version. Cannot use "
-            "engine='numexpr' for query/eval if 'numexpr' is not installed"
+            f"'{engine}' is not installed or an unsupported version. Cannot use "
+            f"engine='{engine}' for query/eval if '{engine}' is not installed"
+        )
+
+    if engine == "onnxruntime" and not ONNXRUNTIME_INSTALLED:
+        raise ImportError(
+            f"'{engine}' is not installed or an unsupported version. Cannot use "
+            f"engine='{engine}' for query/eval if '{engine}' is not installed"
         )
 
     return engine
@@ -240,6 +247,9 @@ def pandas_eval(
             resolvers=resolvers,
             target=target,
         )
+        # TODO: Handle modified target and resolvers.
+        # cannot eval two consequent expr:
+        # the second expr cannot ref the first assigner
 
         parsed_expr = Expr(expr, engine=engine, parser=parser, env=env)
 
@@ -250,86 +260,40 @@ def pandas_eval(
     #################
     # TODO: optimization phase
     expr_remain = []
-    res = {}
     if enable_opt:
         expr_to_opt = []
+        assigners = []
 
         for e2e in expr_to_eval:
             if isinstance(e2e.terms, ONNXEvalNode):
                 expr_to_opt.append(e2e)
+                assigners.append(e2e.assigner)
             else:
                 expr_remain.append(e2e)
 
         if len(expr_to_opt) < 2:
             expr_remain.extend(expr_to_opt)
         else:
-            # do optimize eval
-            fused_expr = MultiModelContext(expr_to_opt)
-            res.update(fused_expr())
+            # do optimize phase
+            fused_term = MultiModelContext(expr_to_opt)
+            env = ensure_scope(
+                level + 1,
+                global_dict=global_dict,
+                local_dict=local_dict,
+                resolvers=resolvers,
+                target=target,
+            )
+            composed_expr = ComposedExpr(engine, env, level, fused_term, assigners)
+            expr_remain.append(composed_expr)
+
     else:
         expr_remain = expr_to_eval
 
     #################
     # Evaluation Phase
     #################
-    env = ensure_scope(
-        level + 1,
-        global_dict=global_dict,
-        local_dict=local_dict,
-        resolvers=resolvers,
-        target=target,
-    )
 
-    for assigner, ret in res.items():
-        if env.target is not None and assigner is not None:
-            target_modified = True
-
-            # if returning a copy, copy only on the first assignment
-            if not inplace and first_expr:
-                try:
-                    target = env.target
-                    if isinstance(target, NDFrame):
-                        target = target.copy(deep=None)
-                    else:
-                        target = target.copy()
-                except AttributeError as err:
-                    raise ValueError("Cannot return a copy of the target") from err
-            else:
-                target = env.target
-
-            # TypeError is most commonly raised (e.g. int, list), but you
-            # get IndexError if you try to do this assignment on np.ndarray.
-            # we will ignore numpy warnings here; e.g. if trying
-            # to use a non-numeric indexer
-            try:
-                with warnings.catch_warnings(record=True):
-                    # TODO: Filter the warnings we actually care about here.
-                    if inplace and isinstance(target, NDFrame):
-                        target.loc[:, assigner] = ret
-                    else:
-                        target[  # pyright: ignore[reportGeneralTypeIssues]
-                            assigner
-                        ] = ret
-            except (TypeError, IndexError) as err:
-                raise ValueError("Cannot assign expression output to target") from err
-
-            if not resolvers:
-                resolvers = ({assigner: ret},)
-            else:
-                # existing resolver needs updated to handle
-                # case of mutating existing column in copy
-                for resolver in resolvers:
-                    if assigner in resolver:
-                        resolver[assigner] = ret
-                        break
-                else:
-                    resolvers += ({assigner: ret},)
-
-            ret = None
-            first_expr = False
-            env.target = target
-
-    # evaluate un-optimized exprs
+    # evaluate un-optimized expr
     for e2e in expr_remain:
         # get our (possibly passed-in) scope
         env = ensure_scope(
@@ -346,15 +310,7 @@ def pandas_eval(
         eng = ENGINES[engine]
         eng_inst = eng(e2e)
 
-        # Temporary engine numexpr fallback check
-        # TODO: move it ahead, avoid eval many times
-        try:
-            ret = eng_inst.evaluate()
-        except ValueError:
-            engine = 'python'
-            eng = ENGINES[engine]
-            eng_inst = eng(e2e)
-            ret = eng_inst.evaluate()
+        ret = eng_inst.evaluate()
 
         if e2e.assigner is None:
             if multi_line:
@@ -384,33 +340,7 @@ def pandas_eval(
             else:
                 target = env.target
 
-            # TypeError is most commonly raised (e.g. int, list), but you
-            # get IndexError if you try to do this assignment on np.ndarray.
-            # we will ignore numpy warnings here; e.g. if trying
-            # to use a non-numeric indexer
-            try:
-                with warnings.catch_warnings(record=True):
-                    # TODO: Filter the warnings we actually care about here.
-                    if inplace and isinstance(target, NDFrame):
-                        target.loc[:, assigner] = ret
-                    else:
-                        target[  # pyright: ignore[reportGeneralTypeIssues]
-                            assigner
-                        ] = ret
-            except (TypeError, IndexError) as err:
-                raise ValueError("Cannot assign expression output to target") from err
-
-            if not resolvers:
-                resolvers = ({assigner: ret},)
-            else:
-                # existing resolver needs updated to handle
-                # case of mutating existing column in copy
-                for resolver in resolvers:
-                    if assigner in resolver:
-                        resolver[assigner] = ret
-                        break
-                else:
-                    resolvers += ({assigner: ret},)
+            target, resolvers = e2e.assign_value(target, resolvers, inplace)
 
             ret = None
             first_expr = False

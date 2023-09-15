@@ -1,6 +1,7 @@
 from typing import Any
 
 import pandas
+import pandas as pd
 from pandas import DataFrame
 from pandas.util._validators import validate_bool_kwarg
 
@@ -9,11 +10,10 @@ from onnxoptimizer.query.util import callable_patch
 
 LEVEL_OFFSET_1 = 1
 
-
 @callable_patch(pandas)
 def predict_eval(expr: str,
                  parser: str = "pandas",
-                 engine: str | None = 'python',
+                 engine: str | None = "onnxruntime",
                  local_dict: Any = None,
                  global_dict: Any = None,
                  resolvers: Any = (),

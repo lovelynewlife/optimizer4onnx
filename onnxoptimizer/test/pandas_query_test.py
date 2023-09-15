@@ -102,7 +102,10 @@ class TestEval(unittest.TestCase):
 
         new_df = batch.predict_eval('''result=@expedia_infer(@batch)
                                     result2=@expedia_infer(@batch)''')
+
         print(new_df)
+
+        assert np.all(new_df["result"] == new_df["result2"])
 
 
 if __name__ == "__main__":
