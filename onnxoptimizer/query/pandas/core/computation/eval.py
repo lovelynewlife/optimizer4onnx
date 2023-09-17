@@ -12,7 +12,7 @@ from pandas.util._validators import validate_bool_kwarg
 
 from pandas.core.dtypes.common import is_extension_array_dtype
 
-from onnxoptimizer.query.onnx.context import MultiModelContext
+from onnxoptimizer.query.pandas.optimization.optimizer import MultiModelExprOptimizer
 from onnxoptimizer.query.pandas.core.computation.check import ONNXRUNTIME_INSTALLED
 from onnxoptimizer.query.pandas.core.computation.engines import ENGINES
 from onnxoptimizer.query.pandas.core.computation.visitor import (
@@ -259,6 +259,8 @@ def pandas_eval(
     # Optimization Phase
     #################
     # TODO: optimization phase
+    optimizer = MultiModelExprOptimizer()
+
     expr_remain = []
     if enable_opt:
         expr_to_opt = []
@@ -275,7 +277,7 @@ def pandas_eval(
             expr_remain.extend(expr_to_opt)
         else:
             # do optimize phase
-            fused_term = MultiModelContext(expr_to_opt)
+            fused_term = optimizer.optimize(expr_to_opt)
             env = ensure_scope(
                 level + 1,
                 global_dict=global_dict,

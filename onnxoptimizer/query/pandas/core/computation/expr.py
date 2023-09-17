@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import warnings
-from typing import List
+from typing import List, Callable
 
 from pandas.core import common as com
 from pandas.core.generic import NDFrame
 from pandas.io.formats import printing
 
-from onnxoptimizer.query.onnx.context import MultiModelContext
 from onnxoptimizer.query.pandas.core.computation.ops import is_term
 from onnxoptimizer.query.pandas.core.computation.scope import Scope
 from onnxoptimizer.query.pandas.core.computation.visitor import PARSERS
@@ -135,7 +134,7 @@ class ComposedExpr:
             engine: str = "onnxruntime",
             env: Scope | None = None,
             level: int = 0,
-            terms: MultiModelContext | None = None,
+            terms: Callable = None,
             assigners: List[str] | None = None
     ) -> None:
         self.env = env or Scope(level=level + 1)
