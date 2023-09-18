@@ -1,3 +1,4 @@
+import onnxoptimizer
 from onnxoptimizer.joint import merge_project_models
 from onnxoptimizer.query.onnx.context import ModelContext
 from onnxoptimizer.query.onnx.model import ModelObject
@@ -6,6 +7,7 @@ from onnxoptimizer.query.onnx.model import ModelObject
 class MultiModelExprOptimizer:
     def __init__(self):
         self.rules = []
+        self.model_optimizer = onnxoptimizer
 
     def optimize(self, expr_list):
         models = []
@@ -25,6 +27,8 @@ class MultiModelExprOptimizer:
         for i in range(2, len(models)):
             model_prefix, model_model = models[i]
             model_fused = merge_project_models(model_fused, model_model, "", model_prefix)
+
+        model_fused = self.model_optimizer.optimize(model_fused, fixed_point=True)
 
         model_obj = ModelObject(model_fused)
 

@@ -4,9 +4,9 @@ Operator classes for eval.
 
 from __future__ import annotations
 
+import operator
 from datetime import datetime
 from functools import partial
-import operator
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -14,31 +14,23 @@ from typing import (
 )
 
 import numpy as np
-from onnxconverter_common import Int64TensorType, FloatTensorType, StringTensorType
-
+import pandas.core.common as com
 from pandas._libs.tslibs import Timestamp
-
 from pandas.core.dtypes.common import (
     is_list_like,
     is_scalar,
 )
-
-import pandas.core.common as com
-
-from onnxoptimizer.query.onnx.context import ModelContext
-from onnxoptimizer.query.pandas.api.function import ModelContextAnnotation
-from onnxoptimizer.query.pandas.core.computation.common import (
-    ensure_decoded,
-    result_type_many,
-)
-from onnxoptimizer.query.pandas.core.computation.scope import DEFAULT_GLOBALS
-
 from pandas.io.formats.printing import (
     pprint_thing,
     pprint_thing_encoded,
 )
 
-from onnxoptimizer.query.types.mapper import numpy_onnx_type_map
+from onnxoptimizer.query.onnx.context import ModelContext
+from onnxoptimizer.query.pandas.core.computation.common import (
+    ensure_decoded,
+    result_type_many,
+)
+from onnxoptimizer.query.pandas.core.computation.scope import DEFAULT_GLOBALS
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -217,7 +209,7 @@ class Op:
 
     op: str
 
-    def __init__(self, op: str, operands: Iterable[Term | Op], encoding=None) -> None:
+    def __init__(self, op: str, operands: Iterable[Term | Op | ONNXEvalNode | ONNXPredicate], encoding=None) -> None:
         self.op = _bool_op_map.get(op, op)
         self.operands = operands
         self.encoding = encoding
@@ -431,7 +423,7 @@ class BinOp(Op):
         term_type
             The "pre-evaluated" expression as an instance of ``term_type``
         """
-        if engine == "python":
+        if engine == "python" or engine == "onnxruntime":
             res = self(env)
         else:
             # recurse over the left/right nodes
@@ -627,6 +619,7 @@ class FuncNode:
 
 
 class ONNXEvalNode:
+    ONNX_NODE_TAG = "<ONNXEvalNode>"
     def __init__(self, name, model_udf, *args, **kwargs) -> None:
         self.name = name
         self.func = model_udf
@@ -638,12 +631,49 @@ class ONNXEvalNode:
         return self.model_context()
 
     def __repr__(self) -> str:
-        return "ONNXEvalNode"
+        return f"<ONNXEvalNode>{pprint_thing(self.name)}"
+
+    def evaluate(self, *args, **kwargs) -> ONNXEvalNode:
+        return self
 
     @property
     def return_type(self):
-        return np.array
+        # TODO: add return type inference of ort call.
+        return np.ndarray
+
+    @property
+    def local_name(self) -> str:
+        return (self.name.replace(LOCAL_TAG, "").
+                replace(self.ONNX_NODE_TAG, ""))
+
+    @property
+    def type(self):
+        return np.ndarray
+
+    @property
+    def is_scalar(self):
+        return False
 
     @property
     def model(self):
         return self.func.model
+
+
+class ONNXPredicate(BinOp):
+    def __init__(self, op, lhs, rhs):
+        super().__init__(op, lhs, rhs)
+        self.op = op
+        self.lhs = lhs
+        self.rhs = rhs
+
+    @property
+    def return_type(self):
+        return np.bool_
+
+    def __call__(self, env):
+        # call eval in parsing time will
+        # invoke the un-optimized version currently
+        left = self.lhs(env)
+        right = self.rhs(env)
+
+        return self.func(left, right)

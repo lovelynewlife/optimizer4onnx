@@ -36,7 +36,7 @@ from onnxoptimizer.query.pandas.core.computation.ops import (
     Op,
     Term,
     UnaryOp,
-    is_term, ONNXEvalNode,
+    is_term, ONNXEvalNode, ONNXPredicate,
 )
 from onnxoptimizer.query.pandas.core.computation.parsing import (
     clean_backtick_quoted_toks,
@@ -522,6 +522,12 @@ class BaseExprVisitor(ast.NodeVisitor):
                 # evaluate "==" and "!=" in python if either of our operands
                 # has an object return type
                 return self._maybe_eval(res, eval_in_python + maybe_eval_in_python)
+
+        if isinstance(lhs, ONNXEvalNode) or isinstance(rhs, ONNXEvalNode):
+            return ONNXPredicate(res.op, lhs, rhs)
+
+        if isinstance(lhs, ONNXPredicate) or isinstance(rhs, ONNXPredicate):
+            return ONNXPredicate(res.op, lhs, rhs)
         return res
 
     def visit_BinOp(self, node, **kwargs):
@@ -700,7 +706,7 @@ class BaseExprVisitor(ast.NodeVisitor):
                     kwargs[key.arg] = self.visit(key.value)(self.env)
 
             if isinstance(res, ModelContextAnnotation):
-                return self.onnx_node_type(str(node), res, *new_args, **kwargs)
+                return self.onnx_node_type(node.func.id, res, *new_args, **kwargs)
 
             name = self.env.add_tmp(res(*new_args, **kwargs))
             return self.term_type(name=name, env=self.env)

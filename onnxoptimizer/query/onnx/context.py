@@ -27,8 +27,8 @@ class ModelContext:
         }
         session = self.infer_session
 
-        labels = [elem.name for elem in session.get_outputs()]
-        probabilities = [elem.name for elem in session.get_outputs() if elem.name.endswith("output_probability")]
+        labels = [elem.name for elem in session.get_outputs() if elem.name.endswith("label") or elem.name.endswith("variable")]
+        probabilities = [elem.name for elem in session.get_outputs() if elem.name.endswith("probability")]
 
         label_out = []
         for elem in labels:
@@ -43,6 +43,6 @@ class ModelContext:
         if len(infer_result) > 1:
             ret = infer_result
         else:
-            ret = infer_result[label_out[0]]
+            ret = infer_res[0]
 
         return ret

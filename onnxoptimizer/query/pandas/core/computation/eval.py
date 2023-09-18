@@ -234,22 +234,22 @@ def pandas_eval(
     #################
     # Parse Phase
     #################
+
+    # get our (possibly passed-in) scope
+    env = ensure_scope(
+        level + 1,
+        global_dict=global_dict,
+        local_dict=local_dict,
+        resolvers=resolvers,
+        target=target,
+    )
+    # TODO: Handle modified target and resolvers.
+    # cannot eval two consequent expr:
+    # the second expr cannot ref the first assigner
     expr_to_eval = []
     for expr in exprs:
         expr = _convert_expression(expr)
         _check_for_locals(expr, level, parser)
-
-        # get our (possibly passed-in) scope
-        env = ensure_scope(
-            level + 1,
-            global_dict=global_dict,
-            local_dict=local_dict,
-            resolvers=resolvers,
-            target=target,
-        )
-        # TODO: Handle modified target and resolvers.
-        # cannot eval two consequent expr:
-        # the second expr cannot ref the first assigner
 
         parsed_expr = Expr(expr, engine=engine, parser=parser, env=env)
 
@@ -258,7 +258,7 @@ def pandas_eval(
     #################
     # Optimization Phase
     #################
-    # TODO: optimization phase
+
     optimizer = MultiModelExprOptimizer()
 
     expr_remain = []
@@ -278,13 +278,6 @@ def pandas_eval(
         else:
             # do optimize phase
             fused_term = optimizer.optimize(expr_to_opt)
-            env = ensure_scope(
-                level + 1,
-                global_dict=global_dict,
-                local_dict=local_dict,
-                resolvers=resolvers,
-                target=target,
-            )
             composed_expr = ComposedExpr(engine, env, level, fused_term, assigners)
             expr_remain.append(composed_expr)
 

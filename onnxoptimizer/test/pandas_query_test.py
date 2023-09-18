@@ -91,6 +91,8 @@ class TestEval(unittest.TestCase):
         df = pd.DataFrame({"animal": ["dog", "pig"], "age": [10, 20]})
         res = df.predict_eval('''new=@say_hello(a=age)
         new2=@say_hello(a=age)''', engine='python')
+        b = 3
+        pd.predict_eval("b + 1 > 1")
         print(res)
 
     def test_predict_end2end(self):
@@ -106,6 +108,18 @@ class TestEval(unittest.TestCase):
         print(new_df)
 
         assert np.all(new_df["result"] == new_df["result2"])
+
+    def test_predict_filter_eval(self):
+        batch = self.df.iloc[: 4096, :]
+
+        @model_udf("/home/uw1/snippets/py_onnx/expedia/expedia.onnx")
+        def expedia_infer(infer_df):
+            return infer_df.to_dict(orient="series")
+
+        new_df = batch.predict_filter("@expedia_infer(@batch)>=0 and @expedia_infer(@batch)<=1")
+
+        assert np.all(new_df["prop_location_score1"] == batch["prop_location_score1"])
+        print(new_df)
 
 
 if __name__ == "__main__":
