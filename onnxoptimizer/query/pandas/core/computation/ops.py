@@ -209,7 +209,7 @@ class Op:
 
     op: str
 
-    def __init__(self, op: str, operands: Iterable[Term | Op | ONNXEvalNode | ONNXPredicate], encoding=None) -> None:
+    def __init__(self, op: str, operands: Iterable[Term | Op | ONNXFuncNode | ONNXPredicate], encoding=None) -> None:
         self.op = _bool_op_map.get(op, op)
         self.operands = operands
         self.encoding = encoding
@@ -618,23 +618,33 @@ class FuncNode:
         return MathCall(self, args)
 
 
-class ONNXEvalNode:
+class ONNXFuncNode:
     ONNX_NODE_TAG = "<ONNXEvalNode>"
+
     def __init__(self, name, model_udf, *args, **kwargs) -> None:
         self.name = name
         self.func = model_udf
         self.inputs = model_udf.get_inputs(*args, **kwargs)
         self.model_context = ModelContext(model_udf.model_obj)
 
+        self.result = None
+
     def __call__(self, env):
-        self.model_context.set_infer_input(**self.inputs)
-        return self.model_context()
+        return self.evaluate()
 
     def __repr__(self) -> str:
-        return f"<ONNXEvalNode>{pprint_thing(self.name)}"
+        return f"[ONNXEvalNode]{pprint_thing(self.local_name)}()"
 
-    def evaluate(self, *args, **kwargs) -> ONNXEvalNode:
-        return self
+    @property
+    def evaluated(self):
+        return self.result is not None
+
+    def evaluate(self, *args, **kwargs):
+        if self.evaluated:
+            return self.result
+        else:
+            self.model_context.set_infer_input(**self.inputs)
+            return self.model_context()
 
     @property
     def return_type(self):
@@ -643,8 +653,7 @@ class ONNXEvalNode:
 
     @property
     def local_name(self) -> str:
-        return (self.name.replace(LOCAL_TAG, "").
-                replace(self.ONNX_NODE_TAG, ""))
+        return self.name.replace(LOCAL_TAG, "")
 
     @property
     def type(self):
@@ -677,3 +686,6 @@ class ONNXPredicate(BinOp):
         right = self.rhs(env)
 
         return self.func(left, right)
+
+    def __repr__(self) -> str:
+        return f"[ONNXPredicate]({self.lhs}{pprint_thing(self.op)}{self.rhs})"

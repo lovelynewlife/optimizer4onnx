@@ -36,7 +36,7 @@ from onnxoptimizer.query.pandas.core.computation.ops import (
     Op,
     Term,
     UnaryOp,
-    is_term, ONNXEvalNode, ONNXPredicate,
+    is_term, ONNXFuncNode, ONNXPredicate,
 )
 from onnxoptimizer.query.pandas.core.computation.parsing import (
     clean_backtick_quoted_toks,
@@ -347,7 +347,8 @@ class BaseExprVisitor(ast.NodeVisitor):
 
     const_type: ClassVar[type[Term]] = Constant
     term_type: ClassVar[type[Term]] = Term
-    onnx_node_type: ClassVar[type[ONNXEvalNode]] = ONNXEvalNode
+    onnx_func_type: ClassVar[type[ONNXFuncNode]] = ONNXFuncNode
+    onnx_predicate_type: ClassVar[type[ONNXPredicate]] = ONNXPredicate
 
     binary_ops = CMP_OPS_SYMS + BOOL_OPS_SYMS + ARITH_OPS_SYMS
     binary_op_nodes = (
@@ -523,11 +524,12 @@ class BaseExprVisitor(ast.NodeVisitor):
                 # has an object return type
                 return self._maybe_eval(res, eval_in_python + maybe_eval_in_python)
 
-        if isinstance(lhs, ONNXEvalNode) or isinstance(rhs, ONNXEvalNode):
-            return ONNXPredicate(res.op, lhs, rhs)
-
+        # capture onnx model udf node in predicate.
+        if isinstance(lhs, ONNXFuncNode) or isinstance(rhs, ONNXFuncNode):
+            return self.onnx_predicate_type(res.op, lhs, rhs)
+        # capture onnx predicate node in predicate.
         if isinstance(lhs, ONNXPredicate) or isinstance(rhs, ONNXPredicate):
-            return ONNXPredicate(res.op, lhs, rhs)
+            return self.onnx_predicate_type(res.op, lhs, rhs)
         return res
 
     def visit_BinOp(self, node, **kwargs):
@@ -705,8 +707,9 @@ class BaseExprVisitor(ast.NodeVisitor):
                 if key.arg:
                     kwargs[key.arg] = self.visit(key.value)(self.env)
 
+            # capture onnx model udf node.
             if isinstance(res, ModelContextAnnotation):
-                return self.onnx_node_type(node.func.id, res, *new_args, **kwargs)
+                return self.onnx_func_type(node.func.id, res, *new_args, **kwargs)
 
             name = self.env.add_tmp(res(*new_args, **kwargs))
             return self.term_type(name=name, env=self.env)

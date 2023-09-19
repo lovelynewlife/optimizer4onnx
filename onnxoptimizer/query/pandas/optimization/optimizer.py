@@ -1,5 +1,5 @@
 import onnxoptimizer
-from onnxoptimizer.joint import merge_project_models
+from onnxoptimizer.query.onnx.joint import merge_project_models
 from onnxoptimizer.query.onnx.context import ModelContext
 from onnxoptimizer.query.onnx.model import ModelObject
 

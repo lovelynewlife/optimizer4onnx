@@ -4,28 +4,25 @@ Top level ``eval`` module.
 from __future__ import annotations
 
 import tokenize
-from typing import TYPE_CHECKING
 import warnings
 
+from pandas.core.dtypes.common import is_extension_array_dtype
+from pandas.core.generic import NDFrame
+from pandas.io.formats.printing import pprint_thing
 from pandas.util._exceptions import find_stack_level
 from pandas.util._validators import validate_bool_kwarg
 
-from pandas.core.dtypes.common import is_extension_array_dtype
-
-from onnxoptimizer.query.pandas.optimization.optimizer import MultiModelExprOptimizer
+from onnxoptimizer.query.onnx.compile import ONNXPredicateCompiler
 from onnxoptimizer.query.pandas.core.computation.check import ONNXRUNTIME_INSTALLED
 from onnxoptimizer.query.pandas.core.computation.engines import ENGINES
+from onnxoptimizer.query.pandas.core.computation.expr import Expr, ComposedExpr
+from onnxoptimizer.query.pandas.core.computation.ops import BinOp, ONNXFuncNode
+from onnxoptimizer.query.pandas.core.computation.parsing import tokenize_string
+from onnxoptimizer.query.pandas.core.computation.scope import ensure_scope
 from onnxoptimizer.query.pandas.core.computation.visitor import (
     PARSERS,
 )
-from onnxoptimizer.query.pandas.core.computation.expr import Expr, _assign_value, ComposedExpr
-from onnxoptimizer.query.pandas.core.computation.parsing import tokenize_string
-from onnxoptimizer.query.pandas.core.computation.scope import ensure_scope
-from pandas.core.generic import NDFrame
-
-from pandas.io.formats.printing import pprint_thing
-
-from onnxoptimizer.query.pandas.core.computation.ops import BinOp, ONNXEvalNode
+from onnxoptimizer.query.pandas.optimization.optimizer import MultiModelExprOptimizer
 
 
 def _check_engine(engine: str | None) -> str:
@@ -255,6 +252,9 @@ def pandas_eval(
 
         expr_to_eval.append(parsed_expr)
 
+    predicate_compiler = ONNXPredicateCompiler(env)
+    predicate_compiler.compile(expr_to_eval[0].terms)
+
     #################
     # Optimization Phase
     #################
@@ -267,7 +267,7 @@ def pandas_eval(
         assigners = []
 
         for e2e in expr_to_eval:
-            if isinstance(e2e.terms, ONNXEvalNode):
+            if isinstance(e2e.terms, ONNXFuncNode):
                 expr_to_opt.append(e2e)
                 assigners.append(e2e.assigner)
             else:
