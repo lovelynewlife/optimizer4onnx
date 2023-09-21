@@ -31,6 +31,7 @@ from onnxoptimizer.query.pandas.core.computation.common import (
     result_type_many,
 )
 from onnxoptimizer.query.pandas.core.computation.scope import DEFAULT_GLOBALS
+from onnxoptimizer.query.types.mapper import onnx_type_str_numpy_map
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -648,8 +649,8 @@ class ONNXFuncNode:
 
     @property
     def return_type(self):
-        # TODO: add return type inference of ort call.
-        return np.ndarray
+        onnx_type_str = self.model_context.return_type()
+        return onnx_type_str_numpy_map[onnx_type_str]
 
     @property
     def local_name(self) -> str:
@@ -657,7 +658,8 @@ class ONNXFuncNode:
 
     @property
     def type(self):
-        return np.ndarray
+        onnx_type_str = self.model_context.return_type()
+        return onnx_type_str_numpy_map[onnx_type_str]
 
     @property
     def is_scalar(self):
@@ -677,7 +679,7 @@ class ONNXPredicate(BinOp):
 
     @property
     def return_type(self):
-        return np.bool_
+        return np.dtype('bool')
 
     def __call__(self, env):
         # call eval in parsing time will

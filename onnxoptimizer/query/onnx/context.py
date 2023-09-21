@@ -10,7 +10,24 @@ class ModelContext:
 
         model_data = self.model_obj.model.SerializeToString()
         self.infer_session = ort.InferenceSession(model_data)
+
+        self.labels_map = {
+            elem.name: elem for elem in self.infer_session.get_outputs()
+            if elem.name.endswith("label") or elem.name.endswith("variable")
+        }
+        self.probabilities_map = {
+            elem.name: elem for elem in self.infer_session.get_outputs()
+            if elem.name.endswith("probability")
+        }
+
         self.infer_input = {}
+
+    def return_type(self, which=None):
+        if which is None:
+            assert len(self.labels_map) == 1
+            return next(iter(self.labels_map.values())).type
+        else:
+            return self.labels_map[which].type
 
     def set_infer_input(self, **kwargs):
         self.infer_input = kwargs
@@ -27,10 +44,8 @@ class ModelContext:
         }
         session = self.infer_session
 
-        labels = [elem.name for elem in session.get_outputs() if elem.name.endswith("label") or elem.name.endswith("variable")]
-        probabilities = [elem.name for elem in session.get_outputs() if elem.name.endswith("probability")]
-
         label_out = []
+        labels = list(self.labels_map.keys())
         for elem in labels:
             label_out.append(elem.replace("output_label", "").replace("variable", ""))
 

@@ -10,6 +10,7 @@ from onnxoptimizer.query.util import callable_patch
 
 LEVEL_OFFSET_1 = 1
 
+
 @callable_patch(pandas)
 def predict_eval(expr: str,
                  parser: str = "pandas",
@@ -23,7 +24,7 @@ def predict_eval(expr: str,
                  enable_opt: bool = True):
     return pandas_eval(expr, parser=parser, engine=engine,
                        local_dict=local_dict, global_dict=global_dict,
-                       resolvers=resolvers, level=level+LEVEL_OFFSET_1,
+                       resolvers=resolvers, level=level + LEVEL_OFFSET_1,
                        target=target, inplace=inplace, enable_opt=enable_opt)
 
 

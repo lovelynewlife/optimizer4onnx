@@ -6,13 +6,15 @@ import pandas as pd
 
 from onnxoptimizer.query.pandas.api import model_udf
 
+DATA_DIR = "/home/uw1/MLquery/reference/snippets/py_onnx/expedia"
+
 
 class TestEval(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        path1 = "/home/uw1/snippets/py_onnx/expedia/data/S_listings.csv"
-        path2 = "/home/uw1/snippets/py_onnx/expedia/data/R1_hotels.csv"
-        path3 = "/home/uw1/snippets/py_onnx/expedia/data/R2_searches.csv"
+        path1 = f"{DATA_DIR}/data/S_listings.csv"
+        path2 = f"{DATA_DIR}/data/R1_hotels.csv"
+        path3 = f"{DATA_DIR}/data/R2_searches.csv"
 
         S_listings = pd.read_csv(path1)
         R1_hotels = pd.read_csv(path2)
@@ -92,13 +94,14 @@ class TestEval(unittest.TestCase):
         res = df.predict_eval('''new=@say_hello(a=age)
         new2=@say_hello(a=age)''', engine='python')
         b = 3
-        pd.predict_eval("b + 1 > 1")
+        # pd.predict_eval("b + 1 > 1")
+        df.predict_filter("sin(age) > 15")
         print(res)
 
     def test_predict_end2end(self):
         batch = self.df.iloc[: 4096, :]
 
-        @model_udf("/home/uw1/snippets/py_onnx/expedia/expedia.onnx")
+        @model_udf(f"{DATA_DIR}/expedia_lr.onnx")
         def expedia_infer(infer_df):
             return infer_df.to_dict(orient="series")
 
@@ -112,7 +115,7 @@ class TestEval(unittest.TestCase):
     def test_predict_filter_eval(self):
         batch = self.df.iloc[: 4096, :]
 
-        @model_udf("/home/uw1/snippets/py_onnx/expedia/expedia.onnx")
+        @model_udf(f"{DATA_DIR}/expedia_lr.onnx")
         def expedia_infer(infer_df):
             return infer_df.to_dict(orient="series")
 

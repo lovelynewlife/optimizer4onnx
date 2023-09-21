@@ -1,5 +1,7 @@
+import onnx
+
 import onnxoptimizer
-from onnxoptimizer.query.onnx.joint import merge_project_models
+from onnxoptimizer.query.onnx.joint import merge_project_models_wrap
 from onnxoptimizer.query.onnx.context import ModelContext
 from onnxoptimizer.query.onnx.model import ModelObject
 
@@ -22,11 +24,11 @@ class MultiModelExprOptimizer:
 
         model0_prefix, model0_model = models[0]
         model1_prefix, model1_model = models[1]
-        model_fused = merge_project_models(model0_model, model1_model, model0_prefix, model1_prefix)
+        model_fused = merge_project_models_wrap(model0_model, model1_model, model0_prefix, model1_prefix)
 
         for i in range(2, len(models)):
             model_prefix, model_model = models[i]
-            model_fused = merge_project_models(model_fused, model_model, "", model_prefix)
+            model_fused = merge_project_models_wrap(model_fused, model_model, "", model_prefix)
 
         model_fused = self.model_optimizer.optimize(model_fused, fixed_point=True)
 

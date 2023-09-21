@@ -253,7 +253,7 @@ def pandas_eval(
         expr_to_eval.append(parsed_expr)
 
     predicate_compiler = ONNXPredicateCompiler(env)
-    predicate_compiler.compile(expr_to_eval[0].terms)
+    predicate_compiler.compile_save(expr_to_eval[0].terms, "./temp_rs.onnx")
 
     #################
     # Optimization Phase
