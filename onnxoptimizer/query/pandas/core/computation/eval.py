@@ -12,11 +12,13 @@ from pandas.io.formats.printing import pprint_thing
 from pandas.util._exceptions import find_stack_level
 from pandas.util._validators import validate_bool_kwarg
 
-from onnxoptimizer.query.onnx.compile import ONNXPredicateCompiler
+from onnxoptimizer.query.onnx.compile_expr import ONNXPredicateCompiler
+from onnxoptimizer.query.onnx.context import ModelContext
+from onnxoptimizer.query.onnx.model import ModelObject
 from onnxoptimizer.query.pandas.core.computation.check import ONNXRUNTIME_INSTALLED
 from onnxoptimizer.query.pandas.core.computation.engines import ENGINES
 from onnxoptimizer.query.pandas.core.computation.expr import Expr, ComposedExpr
-from onnxoptimizer.query.pandas.core.computation.ops import BinOp, ONNXFuncNode
+from onnxoptimizer.query.pandas.core.computation.ops import BinOp, ONNXFuncNode, ONNXPredicate
 from onnxoptimizer.query.pandas.core.computation.parsing import tokenize_string
 from onnxoptimizer.query.pandas.core.computation.scope import ensure_scope
 from onnxoptimizer.query.pandas.core.computation.visitor import (
@@ -252,9 +254,6 @@ def pandas_eval(
 
         expr_to_eval.append(parsed_expr)
 
-    predicate_compiler = ONNXPredicateCompiler(env)
-    predicate_compiler.compile_save(expr_to_eval[0].terms, "./temp_rs.onnx")
-
     #################
     # Optimization Phase
     #################
@@ -267,14 +266,25 @@ def pandas_eval(
         assigners = []
 
         for e2e in expr_to_eval:
-            if isinstance(e2e.terms, ONNXFuncNode):
+            if isinstance(e2e.terms, ONNXFuncNode) or isinstance(e2e.terms, ONNXPredicate):
                 expr_to_opt.append(e2e)
                 assigners.append(e2e.assigner)
             else:
                 expr_remain.append(e2e)
 
         if len(expr_to_opt) < 2:
-            expr_remain.extend(expr_to_opt)
+            if len(expr_to_opt) > 0:
+                onnx_compiler = ONNXPredicateCompiler(env)
+                compiled = onnx_compiler.compile(expr_to_opt[0].terms)
+
+                model_obj = ModelObject(compiled.model_partial)
+                compiled_term = ModelContext(model_obj)
+                if compiled.external_input is not None:
+                    compiled_term.set_infer_input(**compiled.external_input)
+                compiled_expr = ComposedExpr(engine, env, level, compiled_term)
+                expr_remain.append(compiled_expr)
+            else:
+                expr_remain.extend(expr_to_opt)
         else:
             # do optimize phase
             fused_term = optimizer.optimize(expr_to_opt)

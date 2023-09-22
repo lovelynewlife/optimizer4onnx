@@ -28,7 +28,7 @@ class MultiModelExprOptimizer:
 
         for i in range(2, len(models)):
             model_prefix, model_model = models[i]
-            model_fused = merge_project_models_wrap(model_fused, model_model, "", model_prefix)
+            model_fused = merge_project_models_wrap(model_fused, model_model, None, model_prefix)
 
         model_fused = self.model_optimizer.optimize(model_fused, fixed_point=True)
 

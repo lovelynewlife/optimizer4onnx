@@ -627,6 +627,7 @@ class ONNXFuncNode:
         self.func = model_udf
         self.inputs = model_udf.get_inputs(*args, **kwargs)
         self.model_context = ModelContext(model_udf.model_obj)
+        self.model_context.set_infer_input(**self.inputs)
 
         self.result = None
 

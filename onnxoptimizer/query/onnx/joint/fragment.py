@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 from onnx import ModelProto
 
@@ -5,7 +7,9 @@ from onnxoptimizer.query.types.mapper import numpy_onnx_tensor_type_map
 
 
 class ModelFragment:
-    def __init__(self, model_partial: ModelProto, return_type):
+    def __init__(self, model_partial: ModelProto, return_type,
+                 external_input: Optional[dict] = None):
+        self.external_input = external_input
         self.model_partial = model_partial
         self.return_type = return_type
 
@@ -43,8 +47,9 @@ class ModelFragment:
 
 
 class OpModelFragment(ModelFragment):
-    def __init__(self, model_partial: ModelProto, return_type, op: str):
-        super().__init__(model_partial, return_type)
+    def __init__(self, model_partial: ModelProto, return_type,
+                 op: str, external_input: Optional[dict] = None):
+        super().__init__(model_partial, return_type, external_input)
         self.op = op
 
     def get_default_output(self):

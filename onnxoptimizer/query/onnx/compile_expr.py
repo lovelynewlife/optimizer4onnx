@@ -3,9 +3,8 @@ import onnx.numpy_helper
 from onnx import ValueInfoProto
 from onnx.compose import merge_models
 
-from onnxoptimizer.query.onnx.joint import merge_project_models_wrap
 from onnxoptimizer.query.onnx.joint.fragment import ModelFragment, OpModelFragment, TermModelFragment
-from onnxoptimizer.query.onnx.joint.merge_expr import merge_models_binary_wrap
+from onnxoptimizer.query.onnx.joint.merge_expr import merge_models_binary_wrap, merge_models_unary_wrap
 from onnxoptimizer.query.pandas.core.computation.ops import (ONNXPredicate, ONNXFuncNode,
                                                              BinOp, Term, UnaryOp, Constant)
 from onnxoptimizer.query.types.mapper import numpy_onnx_tensor_type_map
@@ -59,19 +58,6 @@ _onnx_unary_ops_nodes = (
 _onnx_unary_ops_map = dict(zip(ONNX_UNARY_OPS_SYMS, _onnx_unary_ops_nodes))
 
 
-def merge_fragment_with_unary_op(
-        m: ModelFragment,
-        op: OpModelFragment,
-):
-    model = m.model
-    op_model = op.model
-
-    model = merge_models(model, op_model, io_map=[
-        (m.get_default_output().name, op.get_default_input().name)
-    ])
-    return OpModelFragment(model, op.return_type, op.op)
-
-
 class ONNXPredicateCompiler:
     helper = onnx.helper
     numpy_helper = onnx.numpy_helper
@@ -108,7 +94,7 @@ class ONNXPredicateCompiler:
         return self.compile_BinOp(node)
 
     def compile_ONNXFuncNode(self, node: ONNXFuncNode) -> ModelFragment:
-        return ModelFragment(node.model, node.return_type)
+        return ModelFragment(node.model, node.return_type, node.model_context.infer_input)
 
     def compile_BinOp(self, node: BinOp):
         lhs = node.lhs
@@ -139,7 +125,7 @@ class ONNXPredicateCompiler:
 
         output_name = self.get_temp_name()
 
-        # Try delegate shape inference job to onnx
+        # TODO: How to determine proper shape?
         output_tensor = self.helper.make_tensor_value_info(
             name=output_name,
             elem_type=output_type,
@@ -169,7 +155,13 @@ class ONNXPredicateCompiler:
             prefix2=rhs_prefix
         )
 
-        partial_frag = OpModelFragment(partial_model, node.return_type, op)
+        external_input = {}
+        if lhs_ir.external_input is not None:
+            external_input.update(lhs_ir.external_input)
+        if rhs_ir.external_input is not None:
+            external_input.update(rhs_ir.external_input)
+
+        partial_frag = OpModelFragment(partial_model, node.return_type, op, external_input)
 
         return partial_frag
 
@@ -179,12 +171,13 @@ class ONNXPredicateCompiler:
 
         output_name = self.get_temp_name()
 
+        input_prefix = self.get_temp_name()
         input_tensor = operand.get_default_output()
-        input_name = input_tensor.name
+        input_name = input_prefix + input_tensor.name
 
         output_type = numpy_onnx_tensor_type_map[node.return_type.type]
 
-        # Should I do shape inference here?
+        # Should do shape inference here?
         output_shape = input_tensor.type.tensor_type.shape
 
         output_tensor = self.helper.make_tensor_value_info(
@@ -208,11 +201,15 @@ class ONNXPredicateCompiler:
 
         partial_model = self.helper.make_model(partial_graph)
 
-        onnx.checker.check_model(partial_model)
+        merge_model = merge_models_unary_wrap(
+            m1=operand.model,
+            mop=partial_model,
+            prefix1=input_prefix,
+        )
 
-        temp_frag = OpModelFragment(partial_model, node.return_type, op)
-
-        merge_frag = merge_fragment_with_unary_op(operand, temp_frag)
+        merge_frag = OpModelFragment(
+            merge_model, operand.return_type, op, external_input=operand.external_input
+        )
 
         return merge_frag
 
@@ -240,8 +237,6 @@ class ONNXPredicateCompiler:
         )
 
         partial_model = self.helper.make_model(partial_graph)
-
-        onnx.checker.check_model(partial_model)
 
         return TermModelFragment(partial_model, np_value.dtype)
 

@@ -113,14 +113,15 @@ class TestEval(unittest.TestCase):
         assert np.all(new_df["result"] == new_df["result2"])
 
     def test_predict_filter_eval(self):
-        batch = self.df.iloc[: 4096, :]
+        batch = self.df.iloc[: 120000, :]
 
         @model_udf(f"{DATA_DIR}/expedia_lr.onnx")
         def expedia_infer(infer_df):
             return infer_df.to_dict(orient="series")
 
-        new_df = batch.predict_filter("@expedia_infer(@batch)>=0 and @expedia_infer(@batch)<=1")
-
+        new_df = batch.predict_filter("@expedia_infer(@batch)==0 or @expedia_infer(@batch)==1")
+        assert np.all(new_df["prop_location_score1"] == batch["prop_location_score1"])
+        new_df = batch.predict_filter("not @expedia_infer(@batch)==3")
         assert np.all(new_df["prop_location_score1"] == batch["prop_location_score1"])
         print(new_df)
 
