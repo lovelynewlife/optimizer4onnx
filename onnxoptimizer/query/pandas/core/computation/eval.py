@@ -24,7 +24,7 @@ from onnxoptimizer.query.pandas.core.computation.scope import ensure_scope
 from onnxoptimizer.query.pandas.core.computation.visitor import (
     PARSERS,
 )
-from onnxoptimizer.query.pandas.optimization.optimizer import MultiModelExprOptimizer
+from onnxoptimizer.query.pandas.optimization.optimizer import ModelExprOptimizer
 
 
 def _check_engine(engine: str | None) -> str:
@@ -242,7 +242,7 @@ def pandas_eval(
         resolvers=resolvers,
         target=target,
     )
-    # TODO: Handle modified target and resolvers.
+    # TODO: May need to handle modified target and resolvers.
     # cannot eval two consequent expr:
     # the second expr cannot ref the first assigner
     expr_to_eval = []
@@ -258,48 +258,19 @@ def pandas_eval(
     # Optimization Phase
     #################
 
-    optimizer = MultiModelExprOptimizer()
+    optimizer = ModelExprOptimizer(env, engine, level)
 
-    expr_remain = []
     if enable_opt:
-        expr_to_opt = []
-        assigners = []
-
-        for e2e in expr_to_eval:
-            if isinstance(e2e.terms, ONNXFuncNode) or isinstance(e2e.terms, ONNXPredicate):
-                expr_to_opt.append(e2e)
-                assigners.append(e2e.assigner)
-            else:
-                expr_remain.append(e2e)
-
-        if len(expr_to_opt) < 2:
-            if len(expr_to_opt) > 0:
-                onnx_compiler = ONNXPredicateCompiler(env)
-                compiled = onnx_compiler.compile(expr_to_opt[0].terms)
-
-                model_obj = ModelObject(compiled.model_partial)
-                compiled_term = ModelContext(model_obj)
-                if compiled.external_input is not None:
-                    compiled_term.set_infer_input(**compiled.external_input)
-                compiled_expr = ComposedExpr(engine, env, level, compiled_term)
-                expr_remain.append(compiled_expr)
-            else:
-                expr_remain.extend(expr_to_opt)
-        else:
-            # do optimize phase
-            fused_term = optimizer.optimize(expr_to_opt)
-            composed_expr = ComposedExpr(engine, env, level, fused_term, assigners)
-            expr_remain.append(composed_expr)
-
+        expr_final_eval = optimizer.optimize(expr_to_eval)
     else:
-        expr_remain = expr_to_eval
+        expr_final_eval = expr_to_eval
 
     #################
     # Evaluation Phase
     #################
 
     # evaluate un-optimized expr
-    for e2e in expr_remain:
+    for e2e in expr_final_eval:
         # get our (possibly passed-in) scope
         env = ensure_scope(
             level + 1,
