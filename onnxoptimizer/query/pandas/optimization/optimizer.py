@@ -29,10 +29,11 @@ class ModelExprOptimizer:
             if isinstance(e2e.terms, ONNXFuncNode) and e2e.assigner is not None:
                 expr_to_opt.append(e2e)
                 assigners.append(e2e.assigner)
-            if isinstance(e2e.terms, ONNXPredicate):
-                predicate_to_opt.append(e2e)
             else:
-                expr_opted.append(e2e)
+                if isinstance(e2e.terms, ONNXPredicate):
+                    predicate_to_opt.append(e2e)
+                else:
+                    expr_opted.append(e2e)
 
         if len(expr_to_opt) < 2:
             expr_opted.extend(expr_to_opt)
